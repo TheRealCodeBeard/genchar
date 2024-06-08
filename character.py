@@ -36,7 +36,9 @@ class Character():
     @classmethod
     def from_dict(cls, data):
         get = lambda x:data[x] if x in data else None
-        char =  cls(get('name'),get('id'),get('virtues'),get('values'))
+        char =  cls(get('name'),get('id'))
+        char.values = get('values')
+        char.virtues= get('virtues')
         char.media = get('media')
         char.hated_media = get('hated_media')
         char.location = data['location']
@@ -94,6 +96,7 @@ Only use the <|context|> given for your responses. Don't make stuff up.
 Use simple language. Don't over embelish or use flowery words.
 Your virtues and your values affect what you say.
 Your memories of people and events affect how you respond.
+Memories about other named people are not about you.
 Never refer to yourself in the third person."""
         system_part = f"<|system|>\n{system}<|end|>"
         context = f"Your virtues {', '.join(self.virtues)}"
@@ -111,7 +114,7 @@ Never refer to yourself in the third person."""
         context_part = f"<|context|>\n{context}<|end|>"
         thought_part = f"<|user|>\n{thought}<|end|>"
         full_prompt = self.__concatinate_prompt__(system_part,context_part,thought_part)
-        print(f"{full_prompt}\n")
+        #print(f"{full_prompt}\n")
         return full_prompt
 
     def __clean_response__(self,response):
@@ -161,7 +164,9 @@ Never refer to yourself in the third person."""
             json.dump(self, json_file,cls=CharacterEncoder)
 
     def add_known_person(self,name):
-        if self.known_people:self.known_people.append(name)
+        if self.known_people:
+            if name not in self.known_people:
+                self.known_people.append(name)
         else: self.known_people = [name]
 
     def change_opinion_of_person(self,name,change):
@@ -172,6 +177,7 @@ Never refer to yourself in the third person."""
         now = datetime.datetime.now() # this is mostly just an id
         id = uuid.uuid4()
         type = type if type else "internal"
+        score = 0.0
         if who: 
             self.add_known_person(who)
             score = self.brain.get_sentiment(thing)
@@ -181,27 +187,45 @@ Never refer to yourself in the third person."""
             "when":now.strftime('%y-%m-%dT%H:%M:%S.%f'),
             "type":type,
             "who":who,
-            "where":self.location
+            "where":self.location,
+            "sentiment":score
         }])
 
     def __recall__(self,related_statement=None,who=None):
         results = None
         memories = None
-        if related_statement and who:
-            results = self.memory.query(query_texts=[related_statement],where={"who": who})
-        elif related_statement:
-            results = self.memory.query(query_texts=[related_statement])
-        elif who:
-            results = self.memory.query(where={"who": who})
+        memory_context = ""
+        if related_statement or who:
+            if related_statement and who:
+                results = self.memory.query(query_texts=[related_statement],where={"who": who})
+            elif related_statement:
+                results = self.memory.query(query_texts=[related_statement])
+            elif who:
+                results = self.memory.query(where={"who": who})
+            metas = results['metadatas'][0]
+            memories = results['documents'][0]
+            for i,memory in enumerate(memories):
+                meta = metas[i]
+                who_p = f"about {meta['who']} " if 'who' in meta and meta['who'] != "self" else "about me " 
+                score_p = "neutral"
+                if 'score' in meta:
+                    score= float(meta['score'])
+                    if score<0:score_p= "negative"
+                    else: "positive"
+                memory_context += f"have {meta['type']} {who_p}{memory}. This is {score_p}.\n"
         else:
             results = self.memory.get()
-        metas = results['metadatas']
-        memories = results['documents']
-        memory_context = ""
-        for i,memory in enumerate(memories):
-            meta = metas[i]
-            who_p = f"{meta['who']} " if meta['who'] and meta['who'] != "self" else "" 
-            memory_context += f"have {meta['type']} {who_p}{memory}\n"
+            metas = results['metadatas']
+            memories = results['documents']
+            for i,memory in enumerate(memories):
+                meta = metas[i]
+                who_p = f"about {meta['who']} " if 'who' in meta and meta['who'] != "self" else "about me " 
+                score_p = "neutral"
+                if 'score' in meta:
+                    score= float(meta['score'])
+                    if score<0:score_p= "negative"
+                    else: "positive"
+                memory_context += f"have {meta['type']} {who_p}{memory}. This is {score_p}.\n"
         return memory_context
         # docs = None
         # if statement:
@@ -274,7 +298,7 @@ Never refer to yourself in the third person."""
 
     def generate_question_for(self,who):
         response = f"Tell me about yourself {who}?"
-        remembered_context = self.recall(who) # should have some unsummarised stuff here too. Recent things.
+        remembered_context = self.__recall__(who) # should have some unsummarised stuff here too. Recent things.
         prompt= f"You want to {random.choice(['find out','know','understand'])} about {who}. Ask a question about them."
         prompt+=f" You don't know {who}'s interestes unless you have a memory of it in <|contect|>."
         prompt+=f" Ask about {random.choice(['values','virtues','memories','media','mood','philosophy'])} if you have a memory of it in <|contect|>."

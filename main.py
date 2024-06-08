@@ -8,6 +8,11 @@ from brain import Brain
 from attributes import Locations
 from worlds import World
 
+def print_l(text, word_limit=10):
+    words = text.split()
+    for i in range(0, len(words), word_limit):
+        print(' '.join(words[i:i + word_limit]))
+
 print("_________________")
 
 base_brain = Brain.get_base_brain()
@@ -23,13 +28,25 @@ char_a.save(character.character_folder)
 #char_b.save(character.character_folder)
 
 char_a.see(world.seen_at_location(char_a.location))
+char_a.see("Barney stole some chips from Barbara","Barney")
 char_a.hear(world.hear_at_location(char_a.location))
+char_a.hear("a loud laugh","Barney")
+char_a.hear("Someone made a terrifying scream")
+char_a.hear("I likes chips","Barbara")
+char_a.hear("I love potatoes","Barbara")
+char_a.hear("I hate Barney","Barbara")
+char_a.hear("I dislikes cats","Barbara")
 print("----------")
-print("||")
-print(char_a.introduce())
-print("\n||")
-print(char_a.express_yourself())
+print_l(char_a.introduce())
+print("\n++")
+print_l(char_a.express_yourself())
+print("++")
+print_l(char_a.generate_question_for("Barbara"))
+print("++")
+print_l(char_a.generate_question_for("Barney"))
 print("----------")
+char_a.save(character.character_folder)
+
 # char_a_intro = char_a.introduce()
 # print(char_a_intro)
 #print(char_b.introduce())
