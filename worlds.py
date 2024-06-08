@@ -25,6 +25,7 @@ class World():
             if saw not in self.location_sights:
                 self.location_sights[location] = saw
         return saw
+    
     def hear_at_location(self,location):
         hear = None
         #we see what has been seen here 90% of the time

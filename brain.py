@@ -1,5 +1,6 @@
 from huggingface_hub import hf_hub_download
 from llama_cpp import Llama
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import re
 
 class Brain():
@@ -18,6 +19,7 @@ class Brain():
     def __init__(self,base_brain) -> None:
         self.llm = base_brain
         self.prompt_token_counts = []
+        self.sentiment_analyser = SentimentIntensityAnalyzer()
         self.generation_kwargs = {
             "max_tokens":256, # Max number of new tokens to generate
             "stop":["<|endoftext|>", "</s>","<|im_end|>","<|end|>","|<end","\n"], # Text sequences to stop generation on
@@ -32,4 +34,20 @@ class Brain():
         self.prompt_token_counts.append(res['usage']['prompt_tokens'])
         final_response = re.sub("\<\|[^\|]*\|\>","",res['choices'][0]['text']).strip()
         return final_response
-    
+    def get_sentiment(self,text):
+        score = 0.0
+        sentiment = self.sentiment_analyser.polarity_scores(text)
+        compound = sentiment['compound']
+        if compound==0.0:
+            system_part = f"<|system|>\nOnly return sentiment scores as numbers nothing else. -1.0 for fully negative. 1.0 for fully positive."
+            system_part +=f"\nFor example: 'I hate you' you may say '-1.0'."
+            system_part +=f"\nFor example: 'That makes me so happy' you may say '1.0'."
+            system_part +=f"\n'you are in a park' you may say '0.0'."
+            system_part +=f"\n'Bob stole money' you may say '-0.5'."
+            system_part +=f"\n'Sally smiled at you' you may say '0.5'."
+            system_part +="\n<|end|>"
+            thought_part = f"<|user|>\nAnalyse the sentiment of {text}<|end|>"
+            full_prompt=  f"{system_part}\n{thought_part}\n<|assistant|>"
+            score_text = self.prompt(full_prompt)
+            score = float(score_text)
+        return score

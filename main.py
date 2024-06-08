@@ -18,6 +18,7 @@ char_a = character.get_or_create_character(base_brain,memory_client,shared_locai
 #char_b = get_or_create_character(base_brain,memory_client,shared_locaiton)
 #char_a.known_people.append(char_b.name)
 #char_b.known_people.append(char_a.name)
+
 char_a.save(character.character_folder)
 #char_b.save(character.character_folder)
 

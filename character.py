@@ -7,6 +7,7 @@ import datetime
 import random
 from brain import Brain
 import attributes
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from attributes import Names,Media,Moods,Philosophies,Virtues,Values,Locations,Hobbies
 
 character_folder = "./characters"
@@ -106,7 +107,7 @@ Never refer to yourself in the third person."""
             context += f"\n{self.__get_people_ratings__()}"
         context += f"\nYou like these media {', '.join(self.media)}" if self.media else ""
         context += f"\nYou absolutely hate these media {', '.join(self.hated_media)}" if self.hated_media else ""
-        context += f"\nYour memories are {remembered_context}" if remembered_context else ""
+        context += f"\nYour memories are:\n{remembered_context}" if remembered_context else ""
         context_part = f"<|context|>\n{context}<|end|>"
         thought_part = f"<|user|>\n{thought}<|end|>"
         full_prompt = self.__concatinate_prompt__(system_part,context_part,thought_part)
@@ -159,11 +160,23 @@ Never refer to yourself in the third person."""
         with open(f'{folder_path}/{self.name}.json', 'w',encoding="utf-8") as json_file:
             json.dump(self, json_file,cls=CharacterEncoder)
 
+    def add_known_person(self,name):
+        if self.known_people:self.known_people.append(name)
+        else: self.known_people = [name]
+
+    def change_opinion_of_person(self,name,change):
+        if name in self.people_rating: self.people_rating[name]+=change
+        else:self.people_rating[name]=change
+
     def __remember__(self,thing,type=None,who=None):
         now = datetime.datetime.now() # this is mostly just an id
         id = uuid.uuid4()
         type = type if type else "internal"
-        who = who if who else "self"
+        if who: 
+            self.add_known_person(who)
+            score = self.brain.get_sentiment(thing)
+            self.change_opinion_of_person(who,score*0.1)
+        else: who = "self"
         self.memory.upsert(documents=[thing],ids=[str(id)],metadatas=[{
             "when":now.strftime('%y-%m-%dT%H:%M:%S.%f'),
             "type":type,
@@ -205,8 +218,8 @@ Never refer to yourself in the third person."""
     def hear(self,heard_thing,from_char_name=None):
         self.__remember__(heard_thing,type="heard",who=from_char_name)
 
-    def see(self,seen_thing):
-        self.__remember__(seen_thing,type="seen")
+    def see(self,seen_thing,from_char_name=None):
+        self.__remember__(seen_thing,type="seen",who=from_char_name)
 
     def introduce(self):
         memories = self.__recall__()
