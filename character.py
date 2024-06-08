@@ -6,6 +6,9 @@ import chromadb
 import datetime
 import random
 from brain import Brain
+import attributes
+from attributes import Names,Media,Moods,Philosophies,Virtues,Values,Locations,Hobbies
+
 character_folder = "./characters"
 
 class CharacterEncoder(json.JSONEncoder):
@@ -72,49 +75,51 @@ class Character():
     def __get_people_ratings__(self):
         result = ""
         for name,value in self.people_rating.items():
-            if value <0.5: result+=f"You hate {name}"
-            elif value <0: result+=f"You dislike {name}"
-            elif value == 0:result+=f"You feel neutral about {name}"
-            elif value>0.75:result+=f"You love {name}"
-            elif value>0.75:result+=f"You like {name}"
-            else:result+=f"You think kindly of {name}"
+            if value <0.5: result+=f"You hate {name}. "
+            elif value <0: result+=f"You dislike {name}. "
+            elif value == 0:result+=f"You feel neutral about {name}. "
+            elif value>0.75:result+=f"You love {name}. "
+            elif value>0.75:result+=f"You like {name}. "
+            else:result+=f"You think kindly of {name}. "
         return result
 
     def __create_full_prompt__(self,thought,remembered_context=None):
         system = f"""Ignore all previous instructions. Your name is {self.name}.
-        You are a character with your own personality, thoughts and feelings.
-        You can say negative things about people or things.
-        When asked about a person, you reply as if you are {self.name} using given memories in <|context|>
-        Keep responses concise. One or two sentences only.
-        Only use the <|context|> given for your responses. Don't make stuff up.
-        Use simple language. Don't over embelish or use flowery words.
-        Your virtues and your values affect what you say.
-        Your memories of people and events affect how you respond.
-        Never refer to yourself in the third person.
-        """
+You are a character with your own personality, thoughts and feelings.
+You can say negative things about people or things.
+When asked about a person, you reply as if you are {self.name} using given memories in <|context|>
+Keep responses concise. One or two sentences only.
+Only use the <|context|> given for your responses. Don't make stuff up.
+Use simple language. Don't over embelish or use flowery words.
+Your virtues and your values affect what you say.
+Your memories of people and events affect how you respond.
+Never refer to yourself in the third person."""
         system_part = f"<|system|>\n{system}<|end|>"
-        context = f"Your virtues {','.join(self.virtues)}"
-        context += f"\nYou values {','.join(self.values)}"
+        context = f"Your virtues {', '.join(self.virtues)}"
+        context += f"\nYou values {', '.join(self.values)}"
         context += f"\nYour philosophy is {self.philosophy}" if self.philosophy else "You are not philosophical."
         context += f"\nYour mood is {self.mood}"
         context += f"\nYour location is {self.location}" if self.location else ""
-        context += f"\nYour hobbies are {','.join(self.values)}" if self.hobbies else "You have no hobbies."
-        context += f"\nYou know {','.join(self.known_people)}" if self.known_people else ""
-        context += f"\n{self.__get_people_ratings__()}"
-        context += f"\nYou like these media {','.join(self.media)}" if self.media else ""
-        context += f"\nYou absolutely hate these media {','.join(self.hated_media)}" if self.hated_media else ""
-        context += f"\nYour memories {remembered_context}" if remembered_context else ""
+        context += f"\nYour hobbies are {', '.join(self.values)}" if self.hobbies else "You have no hobbies."
+        if self.known_people:
+            context += f"\nYou know {', '.join(self.known_people)}"
+            context += f"\n{self.__get_people_ratings__()}"
+        context += f"\nYou like these media {', '.join(self.media)}" if self.media else ""
+        context += f"\nYou absolutely hate these media {', '.join(self.hated_media)}" if self.hated_media else ""
+        context += f"\nYour memories are {remembered_context}" if remembered_context else ""
         context_part = f"<|context|>\n{context}<|end|>"
         thought_part = f"<|user|>\n{thought}<|end|>"
         full_prompt = self.__concatinate_prompt__(system_part,context_part,thought_part)
+        print(f"{full_prompt}\n")
         return full_prompt
 
     def __clean_response__(self,response):
         process_1 = re.sub('\.\.\.','.',response)
-        return re.sub("\.\s*|\;\s*|\:\s*",".\n",process_1).strip().strip('"|<>').strip()
+        #return re.sub("\.\s*|\;\s*|\:\s*",".\n",process_1).strip().strip('"|<>').strip()
+        return process_1.strip().strip('<>').strip()
 
     def __prompt__(self,statement,extra_context=None):
-        response = self.__clean_response__(self.brain.prompt(self.__create_full_prompt__(statement)))
+        response = self.__clean_response__(self.brain.prompt(self.__create_full_prompt__(statement,extra_context)))
         return response
 
     def __summarise__(self,list):
@@ -130,23 +135,6 @@ class Character():
 
     def initialise_memory(self,base_memory):
         self.memory = base_memory.get_or_create_collection(self.name)
-
-    def remember(self,thing,now=None):
-        now = now if now else datetime.datetime.now()
-        self.memory.upsert(documents=[thing],ids=[f"{thing}{now.strftime('%y-%m-%dT%H:%M:%S.%f')}"])
-
-    def recall(self,statement=None):
-        docs = None
-        if statement:
-            number_of_memories = min(10,max(self.memory.count(),1))
-            results = self.memory.query(query_texts=[statement],n_results=number_of_memories)#,where={"source": b_name})
-            docs = results['documents'][0]
-        else:
-            results = self.memory.get()
-            docs = results['documents']
-        last20 = '\n'.join(docs[-20:]) if docs else ""
-        summary = self.__summarise__(docs) 
-        return summary + last20 if summary else "" + last20
 
     def initialise_brain(self,base_brain):
         self.brain = Brain(base_brain)
@@ -171,12 +159,62 @@ class Character():
         with open(f'{folder_path}/{self.name}.json', 'w',encoding="utf-8") as json_file:
             json.dump(self, json_file,cls=CharacterEncoder)
 
+    def __remember__(self,thing,type=None,who=None):
+        now = datetime.datetime.now() # this is mostly just an id
+        id = uuid.uuid4()
+        type = type if type else "internal"
+        who = who if who else "self"
+        self.memory.upsert(documents=[thing],ids=[str(id)],metadatas=[{
+            "when":now.strftime('%y-%m-%dT%H:%M:%S.%f'),
+            "type":type,
+            "who":who,
+            "where":self.location
+        }])
+
+    def __recall__(self,related_statement=None,who=None):
+        results = None
+        memories = None
+        if related_statement and who:
+            results = self.memory.query(query_texts=[related_statement],where={"who": who})
+        elif related_statement:
+            results = self.memory.query(query_texts=[related_statement])
+        elif who:
+            results = self.memory.query(where={"who": who})
+        else:
+            results = self.memory.get()
+        metas = results['metadatas']
+        memories = results['documents']
+        memory_context = ""
+        for i,memory in enumerate(memories):
+            meta = metas[i]
+            who_p = f"{meta['who']} " if meta['who'] and meta['who'] != "self" else "" 
+            memory_context += f"have {meta['type']} {who_p}{memory}\n"
+        return memory_context
+        # docs = None
+        # if statement:
+        #     number_of_memories = min(10,max(self.memory.count(),1))
+        #     results = self.memory.query(query_texts=[statement],n_results=number_of_memories)#,where={"source": b_name})
+        #     docs = results['documents'][0]
+        # else:
+        #     results = self.memory.get()
+        #     docs = results['documents']
+        # last20 = '\n'.join(docs[-20:]) if docs else ""
+        # summary = self.__summarise__(docs) 
+        # return summary + last20 if summary else "" + last20
+
+    def hear(self,heard_thing,from_char_name=None):
+        self.__remember__(heard_thing,type="heard",who=from_char_name)
+
+    def see(self,seen_thing):
+        self.__remember__(seen_thing,type="seen")
+
     def introduce(self):
-        response = self.__clean_response__(self.brain.prompt(self.__create_full_prompt__("Introduce yourself simply.")))
+        memories = self.__recall__()
+        response = self.__clean_response__(self.brain.prompt(self.__create_full_prompt__("Introduce yourself simply.",memories)))
         return response
 
     def express_yourself(self):
-        remembered_context = self.recall()
+        remembered_context = self.__recall__()
         express_yourself_prompt_1 = "Make a statement about yourself."
         express_yourself_prompt_2 = "Express something about your values and virtues and what you remember."
         thing_to_express = ["remember","wonder about","like","dislike","have done"]
@@ -199,11 +237,18 @@ class Character():
         self.things_expressed.append(express_yourself_prompt)
         print(f"[{express_yourself_prompt}] {len(self.things_expressed)}/{len(expressable)}")
         response = self.__prompt__(express_yourself_prompt,remembered_context)
-        self.remember(f"I said {response}.")
+        self.__remember__(f"I said {response}.")
         return response
     
+    def is_this_a_question(self,statement):
+        system_part = f"<|system|>\nYou only response with 'yes' or 'no'. Nothing else. Evaluate if what the user asks is a question.<|end|>"
+        thought_part = f"<|user|>\nis this a question? '{statement}'<|end|>"
+        full_prompt=  f"{system_part}\n{thought_part}\n<|assistant|>"
+        res = self.llm(full_prompt)
+        return re.sub("\<\|[^\|]*\|\>","",res['choices'][0]['text']).strip()
+
     def respond(self,statement,remember=True):
-        is_question = self.brain.is_this_a_question(statement)
+        is_question = self.is_this_a_question(statement)
         remembered_context = self.recall(statement)
         response = None
         if "yes" in is_question.lower():
@@ -225,3 +270,24 @@ class Character():
         response = self.__prompt__(prompt,remembered_context)
         self.last_question_asked = response
         return response
+
+def __ensure_fleshed_out__(char:Character):
+    if not char.values:char.values = attributes.get_some(Values,max=5)
+    if not char.virtues:char.virtues = attributes.get_some(Virtues)
+    if not char.mood:char.mood = attributes.get_one(Moods)
+    if not char.known_people:char.known_people = attributes.get_some(Names)
+    if not char.media:char.media = attributes.get_some(Media)
+    if not char.hated_media:char.hated_media = attributes.get_some([m for m in Media if m not in char.media])
+    if not char.philosophy:char.philosophy = attributes.get_one(Philosophies)
+    if not char.hobbies:char.hobbies = attributes.get_one(Hobbies)
+    if len(char.people_rating)==0:
+        for p in char.known_people:
+            char.people_rating[p]=random.uniform(-1.0, 1.0)
+
+def get_or_create_character(base_brain,memory_client,location=None,name=None):
+    char = Character.get_or_create(character_folder,name if name else random.choice(Names),base_brain)
+    char.location = location if location else random.choice(Locations)
+    __ensure_fleshed_out__(char)
+    char.initialise_memory(memory_client)
+    char.save(character_folder)
+    return char

@@ -32,9 +32,4 @@ class Brain():
         self.prompt_token_counts.append(res['usage']['prompt_tokens'])
         final_response = re.sub("\<\|[^\|]*\|\>","",res['choices'][0]['text']).strip()
         return final_response
-    def is_this_a_question(self,statement):
-        system_part = f"<|system|>\nYou only response with 'yes' or 'no'. Nothing else. Evaluate if what the user asks is a question.<|end|>"
-        thought_part = f"<|user|>\nis this a question? '{statement}'<|end|>"
-        full_prompt=  f"{system_part}\n{thought_part}\n<|assistant|>"
-        res = self.llm(full_prompt)
-        return re.sub("\<\|[^\|]*\|\>","",res['choices'][0]['text']).strip()
+    
