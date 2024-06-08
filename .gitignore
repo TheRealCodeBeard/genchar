@@ -1,0 +1,6 @@
+
+#folders we don't want
+characters/
+chroma/
+old/
+__pycache__/
